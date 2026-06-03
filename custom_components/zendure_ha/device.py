@@ -167,20 +167,16 @@ class ZendureDevice(EntityDevice):
         self.aggrSwitchCount = ZendureRestoreSensor(self, "switchCount", None, None, None, "total_increasing", 0)
 
         self.userDischargeLimit = ZendureRestoreNumber(self, "userDischargePower", None, None, "W", "power", 12000, 0, NumberMode.BOX, True)
-        self.userDischargeLimit._attr_native_value = 12000  # default = no restriction until restored
 
     @property
     def effective_discharge_limit(self) -> int:
         """Return the discharge limit respecting any user-configured cap.
 
-        0 = user blocked discharge entirely.
-        Positive value below hardware limit = user cap in W.
-        Value >= hardware limit = no user restriction.
+        0 = no user restriction, use hardware limit.
+        1–N = cap discharge to N watts (set to 1 to effectively block).
         """
         user = self.userDischargeLimit.asInt
-        if user >= self.discharge_limit:
-            return self.discharge_limit
-        return user  # 0 blocks discharge, 1–N caps it
+        return self.discharge_limit if user == 0 else min(user, self.discharge_limit)
 
     def setLimits(self, charge: int, discharge: int) -> None:
         """Set the device limits."""
