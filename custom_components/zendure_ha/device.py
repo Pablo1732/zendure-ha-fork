@@ -30,7 +30,7 @@ from .binary_sensor import ZendureBinarySensor
 from .button import ZendureButton
 from .const import DeviceState, SmartMode
 from .entity import EntityDevice, EntityZendure
-from .number import ZendureNumber
+from .number import ZendureNumber, ZendureRestoreNumber
 from .select import ZendureRestoreSelect, ZendureSelect
 from .sensor import ZendureRestoreSensor, ZendureSensor
 
