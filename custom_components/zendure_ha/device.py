@@ -191,6 +191,8 @@ class ZendureDevice(EntityDevice):
         """Persist battery-enabled flag and apply immediately."""
         self.batteryEnabled = bool(value)
         self.batteryEnabledSwitch._attr_is_on = self.batteryEnabled
+        if self.hass and self.hass.loop.is_running():
+            self.batteryEnabledSwitch.schedule_update_ha_state()
         data: dict = self.hass.data.setdefault("zendure_ha_battery_enabled", {})
         data[self.deviceId] = self.batteryEnabled
         store = Store(self.hass, 1, "zendure_ha_battery_enabled")
@@ -720,8 +722,22 @@ class ZendureZenSdk(ZendureDevice):
         self.httpid = 0
 
     async def apply_smart_mode(self, enabled: bool) -> None:
-        """Send smartMode:0 (stop battery) or smartMode:1 (allow battery)."""
-        await self.doCommand({"properties": {"smartMode": 1 if enabled else 0}})
+        """Allow or block battery discharge.
+
+        enabled=True  → smartMode:1, manager takes over on next P1 event.
+        enabled=False → Solar-passthrough only: outputLimit=solarInput, inputLimit=0.
+                        Battery neither charges nor discharges, solar still flows to load.
+        """
+        if enabled:
+            await self.doCommand({"properties": {"smartMode": 1}})
+        else:
+            solar = self.solarInput.asInt
+            await self.doCommand({"properties": {
+                "smartMode": 1,
+                "acMode": 2,
+                "outputLimit": solar,
+                "inputLimit": 0,
+            }})
 
     async def mqttSelect(self, select: Any, _value: Any) -> None:
         from .api import Api

@@ -457,10 +457,10 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
                     self.idle.append(d)
                     self.idle_lvlmax = max(self.idle_lvlmax, d.electricLevel.asInt)
                     self.idle_lvlmin = min(self.idle_lvlmin, d.electricLevel.asInt if d.state != DeviceState.SOCFULL else 100)
-                    # Off-grid idle device with battery disabled: enforce smartMode:0
+                    # Off-grid idle device with battery disabled: solar-passthrough only
                     if d.pwr_offgrid > 0 and not d.batteryEnabled:
-                        if d.batteryOutput.asInt > SmartMode.POWER_TOLERANCE:
-                            await d.apply_smart_mode(False)
+                        # Re-apply every cycle to counter any manager re-enabling
+                        await d.apply_smart_mode(False)
 
                 availableKwh += d.actualKwh
                 power += d.pwr_offgrid + home + d.pwr_produced

@@ -100,9 +100,6 @@
       },
       "user_discharge_power": {
         "name": "Max. Entladeleistung (0 = kein Limit)"
-      },
-      "battery_enabled": {
-        "name": "Akku-Entladung erlaubt"
       }
     },
     "sensor": {
@@ -478,6 +475,9 @@
       },
       "fanmode": {
         "name": "Intelligenter Lüfter"
+      },
+      "battery_enabled": {
+        "name": "Akku-Entladung erlaubt"
       }
     }
   },
