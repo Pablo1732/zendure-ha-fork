@@ -9,7 +9,8 @@ from homeassistant.components.number import NumberEntity, NumberEntityDescriptio
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.restore_state import RestoreEntity
+from homeassistant.helpers.restore_state import RestoreEntity, RestoreStateData, StoredState
+from homeassistant.util import dt as dt_util
 from homeassistant.helpers.template import Template
 
 from .entity import EntityDevice, EntityZendure
@@ -126,7 +127,7 @@ class ZendureRestoreNumber(ZendureNumber, RestoreEntity):
         """Handle entity which will be added."""
         await super().async_added_to_hass()
         if state := await self.async_get_last_state():
-            if state.state is None or state.state == "unknown":
+            if state.state is None or state.state in ("unknown", "unavailable"):
                 self._attr_native_value = 0
             else:
                 self._attr_native_value = int(float(state.state))
@@ -137,3 +138,23 @@ class ZendureRestoreNumber(ZendureNumber, RestoreEntity):
                         self._onwrite(self, self._attr_native_value)
         if self.hass and self.hass.loop.is_running():
             self.schedule_update_ha_state()
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Persist current value into RestoreStateData before entity is removed.
+
+        HA only saves RestoreStateData every 15 min and on shutdown, so an
+        integration reload without HA restart would lose any value the user
+        set since the last periodic save. Writing to last_states here ensures
+        async_get_last_state() finds the correct value after reload.
+        """
+        await super().async_will_remove_from_hass()
+        try:
+            if self.hass is None:
+                return
+            state = self.hass.states.get(self.entity_id)
+            if state is None:
+                return
+            data = await RestoreStateData.async_get_instance(self.hass)
+            data.last_states[self.entity_id] = StoredState(state, None, dt_util.utcnow())
+        except Exception as err:
+            _LOGGER.debug("Could not persist restore state for %s: %s", self.entity_id, err)
