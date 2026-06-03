@@ -95,6 +95,12 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
         if (mqtt := data.get("mqtt")) is None:
             return
 
+        # Load persisted user discharge limits into hass.data before device creation
+        from homeassistant.helpers.storage import Store
+        store = Store(self.hass, 1, "zendure_ha_discharge_limits")
+        saved: dict = await store.async_load() or {}
+        self.hass.data.setdefault("zendure_ha_discharge_limits", {}).update(saved)
+
         # get version number from integration
         integration = await async_get_integration(self.hass, DOMAIN)
         if integration is None:

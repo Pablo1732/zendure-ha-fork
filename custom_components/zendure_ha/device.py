@@ -31,6 +31,7 @@ from .button import ZendureButton
 from .const import DeviceState, SmartMode
 from .entity import EntityDevice, EntityZendure
 from .number import ZendureNumber, ZendureRestoreNumber
+from homeassistant.helpers.storage import Store
 from .select import ZendureRestoreSelect, ZendureSelect
 from .sensor import ZendureRestoreSensor, ZendureSensor
 
@@ -166,7 +167,9 @@ class ZendureDevice(EntityDevice):
         self.aggrSolar = ZendureRestoreSensor(self, "aggrSolar", None, "kWh", "energy", "total_increasing", 2)
         self.aggrSwitchCount = ZendureRestoreSensor(self, "switchCount", None, None, None, "total_increasing", 0)
 
-        self.userDischargeLimit = ZendureRestoreNumber(self, "userDischargePower", None, None, "W", "power", 12000, 0, NumberMode.BOX, True)
+        saved_limit = self.hass.data.get("zendure_ha_discharge_limits", {}).get(self.deviceId, 0)
+        self.userDischargeLimit = ZendureNumber(self, "userDischargePower", self._save_discharge_limit, None, "W", "power", 12000, 0, NumberMode.BOX, 1, True)
+        self.userDischargeLimit._attr_native_value = saved_limit
 
     @property
     def effective_discharge_limit(self) -> int:
@@ -198,6 +201,13 @@ class ZendureDevice(EntityDevice):
             self.userDischargeLimit.update_range(0, discharge)
         except Exception:
             _LOGGER.error("SetLimits error %s %s %s!", self.name, charge, discharge)
+
+    async def _save_discharge_limit(self, _entity: Any, value: int) -> None:
+        """Persist user discharge limit to HA storage."""
+        limits: dict = self.hass.data.setdefault("zendure_ha_discharge_limits", {})
+        limits[self.deviceId] = value
+        store = Store(self.hass, 1, "zendure_ha_discharge_limits")
+        await store.async_save(limits)
 
     def setStatus(self) -> None:
         from .api import Api
