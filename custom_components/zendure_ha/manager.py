@@ -457,11 +457,13 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
                     self.idle.append(d)
                     self.idle_lvlmax = max(self.idle_lvlmax, d.electricLevel.asInt)
                     self.idle_lvlmin = min(self.idle_lvlmin, d.electricLevel.asInt if d.state != DeviceState.SOCFULL else 100)
-                    # Off-grid idle devices: apply user battery limit directly
-                    if d.pwr_offgrid > 0 and d.userDischargeLimit.asInt > 0:
-                        desired = d.solarInput.asInt + d.userDischargeLimit.asInt
+                    # Off-grid idle devices: apply user battery limit via outputLimit
+                    if d.pwr_offgrid > 0 and (user_limit := d.userDischargeLimit.asInt) > 0:
+                        desired = min(d.solarInput.asInt + user_limit, d.discharge_limit)
+                        _LOGGER.warning("OffGrid limit %s: solar=%sW bat_limit=%sW → outputLimit=%sW (current=%sW)",
+                                        d.name, d.solarInput.asInt, user_limit, desired, d.pwr_offgrid)
                         if abs(desired - d.pwr_offgrid) > SmartMode.POWER_TOLERANCE:
-                            await d.discharge(desired)
+                            await d.entityWrite(d.limitOutput, desired)
 
                 availableKwh += d.actualKwh
                 power += d.pwr_offgrid + home + d.pwr_produced
