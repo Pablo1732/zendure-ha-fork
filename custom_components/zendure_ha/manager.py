@@ -95,11 +95,11 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
         if (mqtt := data.get("mqtt")) is None:
             return
 
-        # Load persisted user discharge limits into hass.data before device creation
+        # Load persisted battery-enabled flags into hass.data before device creation
         from homeassistant.helpers.storage import Store
-        store = Store(self.hass, 1, "zendure_ha_discharge_limits")
+        store = Store(self.hass, 1, "zendure_ha_battery_enabled")
         saved: dict = await store.async_load() or {}
-        self.hass.data.setdefault("zendure_ha_discharge_limits", {}).update(saved)
+        self.hass.data.setdefault("zendure_ha_battery_enabled", {}).update(saved)
 
         # get version number from integration
         integration = await async_get_integration(self.hass, DOMAIN)
@@ -457,13 +457,10 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
                     self.idle.append(d)
                     self.idle_lvlmax = max(self.idle_lvlmax, d.electricLevel.asInt)
                     self.idle_lvlmin = min(self.idle_lvlmin, d.electricLevel.asInt if d.state != DeviceState.SOCFULL else 100)
-                    # Off-grid idle devices: apply user battery limit via outputLimit
-                    if d.pwr_offgrid > 0 and (user_limit := d.userDischargeLimit.asInt) > 0:
-                        desired = min(d.solarInput.asInt + user_limit, d.discharge_limit)
-                        _LOGGER.warning("OffGrid limit %s: solar=%sW bat_limit=%sW → outputLimit=%sW (current=%sW)",
-                                        d.name, d.solarInput.asInt, user_limit, desired, d.pwr_offgrid)
-                        if abs(desired - d.pwr_offgrid) > SmartMode.POWER_TOLERANCE:
-                            await d.entityWrite(d.limitOutput, desired)
+                    # Off-grid idle device with battery disabled: enforce smartMode:0
+                    if d.pwr_offgrid > 0 and not d.batteryEnabled:
+                        if d.batteryOutput.asInt > SmartMode.POWER_TOLERANCE:
+                            await d.apply_smart_mode(False)
 
                 availableKwh += d.actualKwh
                 power += d.pwr_offgrid + home + d.pwr_produced
@@ -637,7 +634,7 @@ class ZendureManager(DataUpdateCoordinator[None], EntityDevice):
         if dev_start > 0 and len(self.idle) > 0:
             self.idle.sort(key=lambda d: d.electricLevel.asInt, reverse=True)
             for d in self.idle:
-                if d.state != DeviceState.SOCEMPTY:
+                if d.state != DeviceState.SOCEMPTY and d.batteryEnabled:
                     await d.power_discharge(SmartMode.POWER_START)
                     if (dev_start := dev_start - d.discharge_optimal * 2) <= 0:
                         break

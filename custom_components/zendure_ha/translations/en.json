@@ -111,6 +111,9 @@
       },
       "user_discharge_power": {
         "name": "Max. Discharge Power (0 = no limit)"
+      },
+      "battery_enabled": {
+        "name": "Battery discharge allowed"
       }
     },
     "sensor": {

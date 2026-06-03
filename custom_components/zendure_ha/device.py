@@ -31,6 +31,7 @@ from .button import ZendureButton
 from .const import DeviceState, SmartMode
 from .entity import EntityDevice, EntityZendure
 from .number import ZendureNumber, ZendureRestoreNumber
+from .switch import ZendureSwitch
 from homeassistant.helpers.storage import Store
 from .select import ZendureRestoreSelect, ZendureSelect
 from .sensor import ZendureRestoreSensor, ZendureSensor
@@ -167,24 +168,9 @@ class ZendureDevice(EntityDevice):
         self.aggrSolar = ZendureRestoreSensor(self, "aggrSolar", None, "kWh", "energy", "total_increasing", 2)
         self.aggrSwitchCount = ZendureRestoreSensor(self, "switchCount", None, None, None, "total_increasing", 0)
 
-        saved_limit = self.hass.data.get("zendure_ha_discharge_limits", {}).get(self.deviceId, 0)
-        self.userDischargeLimit = ZendureNumber(self, "userDischargePower", self._save_discharge_limit, None, "W", "power", 12000, 0, NumberMode.BOX, 1, True)
-        self.userDischargeLimit._attr_native_value = saved_limit
-
-    @property
-    def effective_discharge_limit(self) -> int:
-        """Return the discharge limit respecting any user-configured cap.
-
-        0 = no user restriction, use hardware limit.
-        1–N = cap battery contribution to N watts.
-        Total output limit = solar + N (so solar passthrough is never cut).
-        """
-        user = self.userDischargeLimit.asInt
-        if user == 0:
-            return self.discharge_limit
-        # Add solar so only the battery portion is capped, not the total output
-        solar = self.solarInput.asInt
-        return min(solar + user, self.discharge_limit)
+        battery_enabled = self.hass.data.get("zendure_ha_battery_enabled", {}).get(self.deviceId, True)
+        self.batteryEnabled: bool = battery_enabled
+        self.batteryEnabledSwitch = ZendureSwitch(self, "batteryEnabled", self._set_battery_enabled, value=battery_enabled)
 
     def setLimits(self, charge: int, discharge: int) -> None:
         """Set the device limits."""
@@ -198,16 +184,21 @@ class ZendureDevice(EntityDevice):
             self.discharge_optimal = discharge // 4
             self.discharge_start = discharge // 10
             self.limitOutput.update_range(0, discharge)
-            self.userDischargeLimit.update_range(0, discharge)
         except Exception:
             _LOGGER.error("SetLimits error %s %s %s!", self.name, charge, discharge)
 
-    async def _save_discharge_limit(self, _entity: Any, value: int) -> None:
-        """Persist user discharge limit to HA storage."""
-        limits: dict = self.hass.data.setdefault("zendure_ha_discharge_limits", {})
-        limits[self.deviceId] = value
-        store = Store(self.hass, 1, "zendure_ha_discharge_limits")
-        await store.async_save(limits)
+    async def _set_battery_enabled(self, _entity: Any, value: int) -> None:
+        """Persist battery-enabled flag and apply immediately."""
+        self.batteryEnabled = bool(value)
+        self.batteryEnabledSwitch._attr_is_on = self.batteryEnabled
+        data: dict = self.hass.data.setdefault("zendure_ha_battery_enabled", {})
+        data[self.deviceId] = self.batteryEnabled
+        store = Store(self.hass, 1, "zendure_ha_battery_enabled")
+        await store.async_save(data)
+        await self.apply_smart_mode(self.batteryEnabled)
+
+    async def apply_smart_mode(self, _enabled: bool) -> None:
+        """Send smartMode command – overridden by ZendureZenSdk."""
 
     def setStatus(self) -> None:
         from .api import Api
@@ -653,7 +644,11 @@ class ZendureDevice(EntityDevice):
 
     async def power_discharge(self, power: int) -> int:
         """Set discharge power."""
-        power = max(0, min(power, self.effective_discharge_limit))
+        if not self.batteryEnabled:
+            if self.homeOutput.asInt > SmartMode.POWER_TOLERANCE or self.batteryOutput.asInt > SmartMode.POWER_TOLERANCE:
+                await self.apply_smart_mode(False)
+            return 0
+        power = max(0, min(power, self.discharge_limit))
         if abs(power - self.homeOutput.asInt + self.homeInput.asInt) <= SmartMode.POWER_TOLERANCE:
             _LOGGER.info("Power discharge %s => no action [power %s]", self.name, power)
             return self.homeOutput.asInt
@@ -723,6 +718,10 @@ class ZendureZenSdk(ZendureDevice):
         super().__init__(hass, deviceId, name, model, definition, parent)
         self.connection = ZendureRestoreSelect(self, "connection", {0: "cloud", 2: "zenSDK"}, self.mqttSelect, 0)
         self.httpid = 0
+
+    async def apply_smart_mode(self, enabled: bool) -> None:
+        """Send smartMode:0 (stop battery) or smartMode:1 (allow battery)."""
+        await self.doCommand({"properties": {"smartMode": 1 if enabled else 0}})
 
     async def mqttSelect(self, select: Any, _value: Any) -> None:
         from .api import Api

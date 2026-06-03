@@ -100,6 +100,9 @@
       },
       "user_discharge_power": {
         "name": "Max. Entladeleistung (0 = kein Limit)"
+      },
+      "battery_enabled": {
+        "name": "Akku-Entladung erlaubt"
       }
     },
     "sensor": {

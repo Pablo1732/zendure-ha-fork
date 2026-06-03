@@ -52,22 +52,22 @@ class FuseGroup:
         if self.initPower:
             self.initPower = False
             if len(self.devices) == 1:
-                d.pwr_max = min(self.maxpower, d.effective_discharge_limit)
+                d.pwr_max = min(self.maxpower, d.discharge_limit)
             else:
                 limit = 0
                 weight = 0
                 for fd in self.devices:
                     if fd.homeOutput.asInt > 0:
-                        limit += fd.effective_discharge_limit
-                        weight += fd.electricLevel.asInt * fd.effective_discharge_limit
+                        limit += fd.discharge_limit
+                        weight += fd.electricLevel.asInt * fd.discharge_limit
                 avail = min(self.maxpower, limit)
                 for fd in self.devices:
                     if fd.homeOutput.asInt > 0:
-                        fd.pwr_max = int(avail * (fd.electricLevel.asInt * fd.effective_discharge_limit) / weight) if weight > 0 else fd.discharge_start
-                        limit -= fd.effective_discharge_limit
+                        fd.pwr_max = int(avail * (fd.electricLevel.asInt * fd.discharge_limit) / weight) if weight > 0 else fd.discharge_start
+                        limit -= fd.discharge_limit
                         if limit < avail - fd.pwr_max:
                             fd.pwr_max = min(avail - limit, avail)
-                        fd.pwr_max = min(fd.pwr_max, fd.effective_discharge_limit)
+                        fd.pwr_max = min(fd.pwr_max, fd.discharge_limit)
                         avail -= fd.pwr_max
 
         return d.pwr_max
