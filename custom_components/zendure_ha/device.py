@@ -173,10 +173,15 @@ class ZendureDevice(EntityDevice):
         """Return the discharge limit respecting any user-configured cap.
 
         0 = no user restriction, use hardware limit.
-        1–N = cap discharge to N watts (set to 1 to effectively block).
+        1–N = cap battery contribution to N watts.
+        Total output limit = solar + N (so solar passthrough is never cut).
         """
         user = self.userDischargeLimit.asInt
-        return self.discharge_limit if user == 0 else min(user, self.discharge_limit)
+        if user == 0:
+            return self.discharge_limit
+        # Add solar so only the battery portion is capped, not the total output
+        solar = self.solarInput.asInt
+        return min(solar + user, self.discharge_limit)
 
     def setLimits(self, charge: int, discharge: int) -> None:
         """Set the device limits."""

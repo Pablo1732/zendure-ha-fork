@@ -128,10 +128,12 @@ class ZendureRestoreNumber(ZendureNumber, RestoreEntity):
         if state := await self.async_get_last_state():
             if state.state is None or state.state == "unknown":
                 self._attr_native_value = 0
-                return
-            self._attr_native_value = int(float(state.state))
-            if self._onwrite is not None:
-                if asyncio.iscoroutinefunction(self._onwrite):
-                    await self._onwrite(self, self._attr_native_value)
-                else:
-                    self._onwrite(self, self._attr_native_value)
+            else:
+                self._attr_native_value = int(float(state.state))
+                if self._onwrite is not None:
+                    if asyncio.iscoroutinefunction(self._onwrite):
+                        await self._onwrite(self, self._attr_native_value)
+                    else:
+                        self._onwrite(self, self._attr_native_value)
+        if self.hass and self.hass.loop.is_running():
+            self.schedule_update_ha_state()
