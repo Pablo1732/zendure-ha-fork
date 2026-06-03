@@ -197,7 +197,9 @@ class ZendureDevice(EntityDevice):
         data[self.deviceId] = self.batteryEnabled
         store = Store(self.hass, 1, "zendure_ha_battery_enabled")
         await store.async_save(data)
-        await self.apply_smart_mode(self.batteryEnabled)
+        if not self.batteryEnabled:
+            await self.solar_passthrough()
+        # On re-enable: manager takes over naturally on next P1 event
 
     async def apply_smart_mode(self, _enabled: bool) -> None:
         """Send smartMode command – overridden by ZendureZenSdk."""
@@ -721,22 +723,22 @@ class ZendureZenSdk(ZendureDevice):
         self.connection = ZendureRestoreSelect(self, "connection", {0: "cloud", 2: "zenSDK"}, self.mqttSelect, 0)
         self.httpid = 0
 
-    async def apply_smart_mode(self, enabled: bool) -> None:
-        """Allow or block battery usage.
+    async def apply_smart_mode(self, _enabled: bool) -> None:
+        """Called after smart mode sets outputLimit. Adds solar so it flows to output instead of battery."""
 
-        smartMode is NOT a battery on/off switch – it controls flash(0) vs RAM(1) storage.
-        The correct way to stop all battery activity is outputLimit:0 + inputLimit:0.
-        smartMode:0 persists the 0/0 limits to flash so they survive a device restart.
+    async def solar_passthrough(self) -> None:
+        """Add current solar production to outputLimit so solar is consumed by output, not stored.
 
-        enabled=True  → manager takes over on next P1 event, no explicit command needed.
-        enabled=False → {smartMode:0, outputLimit:0, inputLimit:0} = full standby.
+        Smart mode sets outputLimit based on demand. We then add solar so the device outputs
+        smart_setpoint + solar in total. Battery only covers the smart_setpoint portion.
+        Solar charges battery only if it exceeds the output, which it won't after this correction.
         """
-        if not enabled:
-            await self.doCommand({"properties": {
-                "smartMode": 0,
-                "outputLimit": 0,
-                "inputLimit": 0,
-            }})
+        solar = self.solarInput.asInt
+        current = self.limitOutput.asInt
+        await self.doCommand({"properties": {
+            "smartMode": 0,
+            "outputLimit": current + solar,
+        }})
 
     async def mqttSelect(self, select: Any, _value: Any) -> None:
         from .api import Api
