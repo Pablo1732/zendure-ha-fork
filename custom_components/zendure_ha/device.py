@@ -724,21 +724,16 @@ class ZendureZenSdk(ZendureDevice):
     async def apply_smart_mode(self, enabled: bool) -> None:
         """Allow or block battery usage.
 
-        enabled=True  → smartMode:1, manager takes over on next P1 event.
-        enabled=False → smartMode:0 + inputLimit:0 + outputLimit:0:
-                        battery stops discharging AND stops charging from grid/AC.
-                        Solar passthrough to off-grid port is unaffected.
+        smartMode is NOT a battery on/off switch – it controls flash(0) vs RAM(1) storage.
+        The correct way to stop all battery activity is outputLimit:0 + inputLimit:0.
+        smartMode:0 persists the 0/0 limits to flash so they survive a device restart.
+
+        enabled=True  → manager takes over on next P1 event, no explicit command needed.
+        enabled=False → {smartMode:0, outputLimit:0, inputLimit:0} = full standby.
         """
-        if enabled:
-            await self.doCommand({"properties": {"smartMode": 1}})
-        else:
-            # smartMode:1 + acMode:2 (output mode) keeps device active for solar passthrough.
-            # outputLimit:0 prevents battery from contributing to output.
-            # inputLimit:0 prevents AC charging.
-            # Solar flows to off-grid output without going into battery.
+        if not enabled:
             await self.doCommand({"properties": {
-                "smartMode": 1,
-                "acMode": 2,
+                "smartMode": 0,
                 "outputLimit": 0,
                 "inputLimit": 0,
             }})
