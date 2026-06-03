@@ -732,8 +732,12 @@ class ZendureZenSdk(ZendureDevice):
         if enabled:
             await self.doCommand({"properties": {"smartMode": 1}})
         else:
+            # smartMode:1 + acMode:2 (output mode) keeps device active for solar passthrough.
+            # outputLimit:0 prevents battery from contributing to output.
+            # inputLimit:0 prevents AC charging.
+            # Solar flows to off-grid output without going into battery.
             await self.doCommand({"properties": {
-                "smartMode": 0,
+                "smartMode": 1,
                 "acMode": 2,
                 "outputLimit": 0,
                 "inputLimit": 0,
