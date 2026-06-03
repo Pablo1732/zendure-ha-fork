@@ -722,20 +722,20 @@ class ZendureZenSdk(ZendureDevice):
         self.httpid = 0
 
     async def apply_smart_mode(self, enabled: bool) -> None:
-        """Allow or block battery discharge.
+        """Allow or block battery usage.
 
         enabled=True  → smartMode:1, manager takes over on next P1 event.
-        enabled=False → Solar-passthrough only: outputLimit=solarInput, inputLimit=0.
-                        Battery neither charges nor discharges, solar still flows to load.
+        enabled=False → smartMode:0 + inputLimit:0 + outputLimit:0:
+                        battery stops discharging AND stops charging from grid/AC.
+                        Solar passthrough to off-grid port is unaffected.
         """
         if enabled:
             await self.doCommand({"properties": {"smartMode": 1}})
         else:
-            solar = self.solarInput.asInt
             await self.doCommand({"properties": {
-                "smartMode": 1,
+                "smartMode": 0,
                 "acMode": 2,
-                "outputLimit": solar,
+                "outputLimit": 0,
                 "inputLimit": 0,
             }})
 
